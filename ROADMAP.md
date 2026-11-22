@@ -1,6 +1,6 @@
 # ROADMAP: Stellar account fixtures
 
-Last updated: 2026-11-21 07:46 UTC
+Last updated: 2026-11-22 15:42 UTC
 
 A corpus of public Stellar account reads, their provenance, and the validator that keeps
 the provenance honest. Nothing here is a claim about whether an account is well
@@ -36,9 +36,9 @@ empty gap list is gate G2.
 |---|---|---|---|---|
 | 0 | Ground truth | 5 | 6 | 83% |
 | 1 | Repository wrapper | 10 | 10 | 100% |
-| 2 | Coverage | 18 | 21 | 86% |
+| 2 | Coverage | 22 | 25 | 88% |
 | 3 | Consumer contract | 3 | 4 | 75% |
-| **All phases** | **Readiness total** | **36** | **41** | **88%** |
+| **All phases** | **Readiness total** | **40** | **45** | **89%** |
 | Gates | G1 to G5 | 2 | 5 | 40% |
 <!-- PROGRESS:END -->
 
@@ -147,6 +147,10 @@ python3 scripts/roadmap_progress.py --check ROADMAP.md
 - [x] **2.19** Prove a seed-shaped response leaves no fixture directory in `tests/test_capture_seed_no_dir.py`. S. Deps: 0.4. Done when: a response containing an `S...` seed pattern raises `Refused` with the seed refusal text, exits 2 through `main`, and creates no fixture or corpus directory on disk. **Issue:** #93. (done 2026-11-20 19:24: added `tests/test_capture_seed_no_dir.py`, which feeds `capture()` a seed-shaped body built at run time and asserts the refusal and an untouched root directory.)
 - [x] **2.20** Assert `tools/capture.py` imports only the standard library in `tests/test_capture_stdlib_imports.py`. S. Deps: 0.4. Done when: `ast` analysis of every import in `tools/capture.py` resolves each top-level name against `sys.stdlib_module_names` and the local modules, and a specimen with an external import is reported. **Issue:** #94. (done 2026-11-20 19:24: added `tests/test_capture_stdlib_imports.py`, which reads `tools/capture.py` with `ast` without importing it and names any non-standard dependency (D-02).)
 - [x] **2.21** Report the offending line when a sidecar fails to parse, covered in `tests/test_schema_parse_line.py`. S. Deps: 0.4. Done when: `load_manifest` reports `line N, column M` after the `sidecar is not valid TOML` prefix, and the new tests cover several parse failures. **Issue:** #96. (done 2026-11-20 19:24: added `describe_toml_error` in `validate.py`, which reads the position from the `tomllib` message so it reads the same on every supported Python, and `tests/test_schema_parse_line.py`.)
+- [x] **2.22** Prove all nine captures survive a canonical JSON round trip, covered in `tests/test_validate_canonical_json.py`. S. Deps: 0.4. Done when: re-serialising each `account.json` with `indent=2` and `sort_keys=True` plus a newline is byte-identical to disk, and a one-byte whitespace change breaks the sidecar digest. **Issue:** #86. (done 2026-11-22: `tests/test_validate_canonical_json.py` reads all nine shipped captures with no skips, checks LF and the final newline, and copies `default-plain` and `corpus/` into a scratch tree to prove `check_captured` reports `sha256 does not match account.json` after the edit.)
+- [x] **2.23** Write `account.json` without platform newline translation, covered in `tests/test_capture_bytes_stable.py`. S. Deps: 0.4. Done when: the bytes on disk are exactly `pretty.encode("utf-8")` under simulated CRLF translation, and `validate.py` accepts the result. **Issue:** #87. (done 2026-11-22: `capture()` now writes UTF-8 bytes for the account, its sidecar and the root document instead of using `write_text`; the suite patches `Path.write_text` to force CRLF translation and asserts the canonical bytes and matching digest still validate.)
+- [x] **2.24** Record a sha256 companion for each captured root document, covered in `tests/test_capture_root_digest.py`. S. Deps: 2.6. Done when: `capture()` writes `corpus/root-<network>.toml` with `url`, `captured_at` and `sha256`, `validate.py` checks that digest, and both shipped root documents have valid companions. **Issue:** #89. (done 2026-11-22: `root_sidecar` and `check_root_provenance` add flat TOML sidecars and digest checks; sidecars for `root-public.json` and `root-testnet.json` were generated from the bytes already on disk, and `SCHEMA.md` 6 documents the contract.)
+- [x] **2.25** Stop `--update` from replacing a fixture with an older ledger, covered in `tests/test_capture_update_ledger.py`. S. Deps: 0.4. Done when: an incoming ledger strictly below the recorded ledger reports both numbers and leaves the fixture untouched, while equal and newer ledgers are accepted. **Issue:** #90. (done 2026-11-22: `existing_ledger` reads `fixture.toml` with `tomllib` before any write, `capture()` refuses a lower ledger with both values, and the suite checks the refusal, exit 2 through `main`, unchanged files and both accepted directions.)
 
 ### Phase 3: Consumer contract
 
@@ -169,6 +173,7 @@ python3 scripts/roadmap_progress.py --check ROADMAP.md
 
 | When | What | Tasks |
 |---|---|---|
+| 2026-11-22 15:42 | Tasks 2.22 to 2.25 (closing #86, #87, #89, #90): `tests/test_validate_canonical_json.py` proves all nine captures are byte-identical to canonical JSON and that one whitespace byte breaks the digest, `tools/capture.py` writes UTF-8 bytes with LF endings so a digest cannot disagree with the file on disk, every captured root document gets a flat `corpus/root-<network>.toml` with url, capture time and sha256 that `validate.py` checks, and `--update` refuses an incoming ledger older than the one in `fixture.toml`. `SCHEMA.md` 6 documents the root provenance sidecar, the shipped root sidecars were generated from existing bytes, and the scratch corpora in the schema suites now write root sidecars too. | 2.22, 2.23, 2.24, 2.25 |
 | 2026-11-20 19:24 | Tasks 2.18 to 2.21 (closing #92, #93, #94, #96): prove ACCOUNT_CAP boundary in tests/test_capture_cap_boundary.py, prove seed-shaped response leaves no fixture directory in tests/test_capture_seed_no_dir.py, assert tools/capture.py imports only stdlib in tests/test_capture_stdlib_imports.py, and report offending line when sidecar fails to parse in tests/test_schema_parse_line.py. | 2.18, 2.19, 2.20, 2.21 |
 | 2026-11-20 17:32 | Tasks 2.14 to 2.17 (closing #95, #97, #98, #99): `validate.py` now reports each repeated shape label by name for captured and synthetic fixtures, `scenario` is one printable line of at most 200 characters enforced by both the capture tool and the validator and documented in `SCHEMA.md` 3, the schema version gate has exact-diagnostic tests for strings, floats, booleans and other integers, and source host agreement has tests for both endpoints and the shipped corpus. Four new suites land in `tests/`; README metrics and the Shields.io test badge were regenerated from the new count. | 2.14, 2.15, 2.16, 2.17 |
 | 2026-11-20 02:56 | Tasks 2.11 to 2.13 and 3.1 to 3.2 (closing #18, #39, #100, #101): worked sidecar examples in SCHEMA.md Section 3 with tests (#39), dynamic network split derivation (#100) and automated accounts table generation (#101) in scripts/sync_readme.py, and tools/manifest.py with D-03 decision recorded for consumer content pinning (#18). Verified by test suites with zero em dashes. | 2.11, 2.12, 2.13, 3.1, 3.2 |
