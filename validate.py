@@ -61,6 +61,17 @@ ROOT_SIDECAR_KEYS = {"url", "captured_at", "sha256"}
 ROOT_SIDECAR_MISSING = "missing; every root document must have a sha256 sidecar"
 ALLOWED_FILES = {"account.json", "fixture.toml"}
 MISSING_ROOT = "missing; every network used must have its root document"
+AUTH_FLAGS = (
+    "auth_required",
+    "auth_revocable",
+    "auth_immutable",
+    "auth_clawback_enabled",
+)
+
+# json and tomllib parse nested arrays by recursion, so a deep enough document raises
+# RecursionError rather than ValueError on some Pythons. It is still a file that does not
+# parse, and it is reported as one instead of escaping validate() as a traceback.
+TOO_DEEP = "nested too deeply to parse"
 STRKEY_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
 VERSION_ACCOUNT = 6 << 3
 VERSION_SEED = 18 << 3
@@ -180,7 +191,7 @@ def shapes_of(account: dict) -> set[str]:
     else:
         found.add("thresholds_zero")
     for flag, value in flags.items():
-        if value:
+        if value and flag in AUTH_FLAGS:
             found.add(str(flag))
     if home_domain is None:
         found.add("no_home_domain")
@@ -241,6 +252,9 @@ def load_manifest(corpus: Corpus, path: Path, where: str) -> dict | None:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
         corpus.error(where, f"sidecar is not valid TOML: {describe_toml_error(exc, text)}")
+        return None
+    except RecursionError:
+        corpus.error(where, f"sidecar is not valid TOML: {TOO_DEEP}")
         return None
     unknown = sorted(set(data) - BASE_KEYS)
     if unknown:
@@ -318,13 +332,28 @@ def check_captured(corpus: Corpus, where: str, data: dict, body: Path, account: 
     ledger = data.get("ledger")
     if not isinstance(ledger, int) or isinstance(ledger, bool) or ledger <= 0:
         corpus.error(where, f"ledger {ledger!r} must be a positive integer")
+    else:
+        # An account resource is its state as of last_modified_ledger, so a capture
+        # cannot have been read at a height below the height it is a picture of.
+        body_ledger = as_int(account.get("last_modified_ledger"))
+        if body_ledger > 0 and ledger < body_ledger:
+            corpus.error(
+                where,
+                f"sidecar ledger {ledger} predates last_modified_ledger {body_ledger}",
+            )
     captured = data.get("captured_at")
     if not isinstance(captured, str) or not TIMESTAMP_SHAPE.match(captured):
         corpus.error(where, f"captured_at {captured!r} must look like 2026-01-02T03:04:05Z")
     else:
-        stamp = datetime.strptime(captured, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
-        if stamp > datetime.now(UTC):
-            corpus.error(where, f"captured_at {captured} is in the future")
+        # The shape check passes digits it cannot judge, so month 19 or year 0000 gets
+        # here; strptime refuses those with ValueError, which is a problem, not a crash.
+        try:
+            stamp = datetime.strptime(captured, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        except ValueError:
+            corpus.error(where, f"captured_at {captured!r} is not a real UTC date and time")
+        else:
+            if stamp > datetime.now(UTC):
+                corpus.error(where, f"captured_at {captured} is in the future")
     endpoint, _ = NETWORKS.get(str(data.get("network")), ("", ""))
     source = data.get("source_url")
     if not isinstance(source, str) or not endpoint:
@@ -345,6 +374,8 @@ def check_captured(corpus: Corpus, where: str, data: dict, body: Path, account: 
     derived = shapes_of(account)
     for token in sorted(declared - derived):
         corpus.error(where, f"declared shape {token!r} is not what account.json shows")
+    for token in sorted(derived - declared):
+        corpus.error(where, f"account.json shows shape {token!r} which sidecar omits")
 
 
 def check_synthetic(corpus: Corpus, where: str, data: dict, account: dict) -> None:
@@ -352,6 +383,8 @@ def check_synthetic(corpus: Corpus, where: str, data: dict, account: dict) -> No
     derived = shapes_of(account)
     for token in sorted(declared - derived):
         corpus.error(where, f"declared shape {token!r} is not what account.json shows")
+    for token in sorted(derived - declared):
+        corpus.error(where, f"account.json shows shape {token!r} which sidecar omits")
 
 
 def validate_fixture(corpus: Corpus, directory: Path, seen_ids: dict[str, str]) -> None:
@@ -386,6 +419,9 @@ def validate_fixture(corpus: Corpus, directory: Path, seen_ids: dict[str, str]) 
         account = json.loads(raw_body)
     except ValueError as exc:
         corpus.error(where, f"account.json is not JSON: {exc}")
+        return
+    except RecursionError:
+        corpus.error(where, f"account.json is not JSON: {TOO_DEEP}")
         return
     if not isinstance(account, dict):
         corpus.error(where, "account.json is not an object")
@@ -468,6 +504,9 @@ def check_root(corpus: Corpus, networks: set[str]) -> None:
             root = json.loads(raw)
         except ValueError as exc:
             corpus.error(f"corpus/root-{network}.json", f"not JSON: {exc}")
+            continue
+        except RecursionError:
+            corpus.error(f"corpus/root-{network}.json", f"not JSON: {TOO_DEEP}")
             continue
         if not isinstance(root, dict):
             corpus.error(f"corpus/root-{network}.json", "not a JSON object")

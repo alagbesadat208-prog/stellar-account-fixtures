@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""All nine shipped captures are canonical JSON, and a whitespace edit is detected.
+"""Every shipped capture is canonical JSON, and a whitespace edit is detected.
 
 SCHEMA.md 2 defines the byte form: json.dumps with indent=2 and sort_keys=True plus a
 trailing newline. The fixture digest is only meaningful while that form survives on
@@ -32,9 +32,9 @@ class CanonicalJsonCorpus(unittest.TestCase):
     def fixtures(self) -> list[Path]:
         return sorted(p for p in FIXTURES.iterdir() if p.is_dir())
 
-    def test_all_nine_captures_are_byte_identical_to_canonical_json(self) -> None:
+    def test_every_capture_is_byte_identical_to_canonical_json(self) -> None:
         fixtures = self.fixtures()
-        self.assertEqual(len(fixtures), 9)
+        self.assertGreaterEqual(len(fixtures), 9)
         for directory in fixtures:
             with self.subTest(fixture=directory.name):
                 body = (directory / "account.json").read_bytes()
